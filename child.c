@@ -19,7 +19,6 @@ int msgid;
 void sighandler(int signum) {
 	printf("Child: Caught signal %d\n", signum);
 	shmdt(shm);
-	msgctl(msgid, IPC_RMID, NULL);
 	exit(1);
 }
 
@@ -72,6 +71,9 @@ int main (int argc, char *argv[]) {
 	key_t young_dolph = ftok("master.c", 2938);
 	int msgid = msgget(young_dolph, 0666);
 	
+	if(msgid < 0)
+		perror("msgget");
+	
 	int num = atoi(argv[1]);
 	
 	time_t timer;
@@ -79,9 +81,19 @@ int main (int argc, char *argv[]) {
     struct tm* tm_info;
     
     struct mesg_buffer message;
-    msgrcv(msgid, &message, sizeof(message), 1, 0);
+    if(msgrcv(msgid, &message, sizeof(message.mesg_text), 1, 0) < 0)
+    	perror("Client received");
+    
+    usleep(2000000);
     
 	printf("%ld, %s\n", (long)getpid(), message.mesg_text);
+	
+	struct mesg_buffer buf;
+	buf.mesg_type = 2;
+	strcpy(buf.mesg_text, argv[1]);
+	
+	if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
+		perror("Child message didn't send");
 	
 	for(int i = 0; i < 3; i++) {
 		log_event(num, "Entering critical section...");
@@ -101,6 +113,5 @@ int main (int argc, char *argv[]) {
 	
 	sleep(2);
 	shmdt(shm);
-	msgctl(msgid, IPC_RMID, NULL);
 	return 0;
 }		
