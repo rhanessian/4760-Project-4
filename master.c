@@ -21,7 +21,7 @@ int shmid, msgid;
 struct shrd_mem *shm;
 
 void sighandler(int signum) {
-	printf("Caught signal %d, coming out...\n", signum);
+	printf("\nCaught signal %d, coming out...\n", signum);
 	for (int i = 0; i < MAXPIDS; i++)
 		if (pids[i] != 0)	
 			kill(pids[i], SIGCHLD);
@@ -54,6 +54,8 @@ int main (int argc, char *argv[]) {
 	signal(SIGINT, sighandler);
 	signal(SIGCHLD, handle_child);
 	signal(SIGALRM, sighandler);
+	
+	FILE* f = fopen("filename.txt", "w");
 	
 	remove("cstest");
 	for (int i = 0; i < MAXPIDS; i++){
@@ -108,47 +110,68 @@ int main (int argc, char *argv[]) {
 	
 	pid_t pid;
 	
-	for (int i = 0; i < n; i++) {
+	unsigned int next_sec = 1, next_nanosec = 0;
+	
+	int num_proc = 0;
+	
+	while(1) {
 		int ind;
 		while ((ind = find_space()) < 0)
 			;
-			
-		if((pid = fork()) == 0) {
-			char string_num[8];
-			snprintf(string_num, sizeof(string_num), "%d", ind);
-			char *args[] = {"./child", string_num, 0};
-			char *env[] = { 0 };
-			execve("./child", args, env);
-			perror("execve");
-			exit(1);
-		} else {
-			pids[ind] = pid;
+		
+		long current = ((long)shm->sec * 1000000000ul) + ((long)shm->nanosec);
+		long next = ((long)next_sec * 1000000000ul) + ((long)next_nanosec);
+		
+		if((current > next) && (num_proc < 1)){
+			if((pid = fork()) == 0) {
+				char string_num[8];
+				snprintf(string_num, sizeof(string_num), "%d", ind);
+				char *args[] = {"./child", string_num, 0};
+				char *env[] = { 0 };
+				execve("./child", args, env);
+				perror("execve");
+				exit(1);
+			} else {
+				pids[ind] = pid;
+				num_proc++;
+				fprintf(f, "Generating process with PID %d and putting it in queue %d at time %u:%u", pid, 0, shm->sec, shm->nanosec);
+			}
 		}
 		
-		struct mesg_buffer buf;
-		buf.mesg_type = 1;
-		strcpy(buf.mesg_text, "Testing");
-		
-		if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
-			perror("Message didn't send");
-		else
-			printf("Sent message\n");
+		if(num_proc > 0){
+			struct mesg_buffer buf;
+			buf.mesg_type = 1000000;
+			snprintf(buf.mesg_text, sizeof(buf.mesg_text), "%d", 10000);
+
+			if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
+				perror("Message didn't send");
+			else
+				printf("Sent message\n");
+				fprintf(f, "Dispatching process with PID %d from queue %d at time %u:%u", pid, 0, shm->sec, shm->nanosec);
 	
-		struct mesg_buffer message;
+			struct mesg_buffer message;
 		
-		do {
-			int retn = msgrcv(msgid, &message, sizeof(message.mesg_text), 2, 0);
-			if(retn < 0){
-				if(errno != EINTR){
-					perror("Message not received");
+			do {
+				int retn = msgrcv(msgid, &message, sizeof(message.mesg_text), -9999, 0);
+				if(retn < 0) {
+					if(errno != EINTR) {
+						perror("Message not received");
+						break;
+					} else 
+						printf("EINTR received\n");	
+				} else {
+					printf("Received %s, Message type: %ld\n", message.mesg_text, message.mesg_type);
 					break;
-				} else 
-					printf("EINTR received\n");	
-			} else {
-				printf("Received %s\n", message.mesg_text);
-				break;
-			}
-		} while(1);
+				}
+			} while(1);
+		}
+		
+		shm->nanosec += 10;
+		
+		if(shm->nanosec >= 1000000000) {
+			shm->nanosec -= 1000000000;
+			shm->sec++;
+		}
 	}	
 		
 	while(wait(NULL) > 0)
@@ -157,6 +180,8 @@ int main (int argc, char *argv[]) {
 	shmdt(shm);
 	shmctl(shmid, IPC_RMID, NULL);
 	msgctl(msgid, IPC_RMID, NULL);
+	
+	fclose(f);
 	
 	return 0;
 }

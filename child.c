@@ -59,7 +59,9 @@ void log_event(int num, const char* message) {
 int main (int argc, char *argv[]) {
 	signal(SIGINT, sighandler);
 	
-	srand(time(NULL));
+	int num = atoi(argv[1]);
+	
+	srand(time(NULL) + num);
 
 	int shmid;
 	
@@ -74,28 +76,30 @@ int main (int argc, char *argv[]) {
 	if(msgid < 0)
 		perror("msgget");
 	
-	int num = atoi(argv[1]);
-	
 	time_t timer;
     char buffer[26];
     struct tm* tm_info;
-    
-    struct mesg_buffer message;
-    if(msgrcv(msgid, &message, sizeof(message.mesg_text), 1, 0) < 0)
-    	perror("Client received");
-    
-    usleep(2000000);
-    
-	printf("%ld, %s\n", (long)getpid(), message.mesg_text);
 	
-	struct mesg_buffer buf;
-	buf.mesg_type = 2;
-	strcpy(buf.mesg_text, argv[1]);
+	while(1){	
+		struct mesg_buffer message;
+		
+    	if(msgrcv(msgid, &message, sizeof(message.mesg_text), 1000000, 0) < 0)
+    		perror("Client received");
+    
+   		usleep(2000000);
+		printf("%ld, %s\n", (long)getpid(), message.mesg_text);
+		struct mesg_buffer buf;
+		buf.mesg_type = 2;
+		strcpy(buf.mesg_text, argv[1]);
 	
-	if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
-		perror("Child message didn't send");
+		if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
+			perror("Child message didn't send");
+		
+		if ((rand()%10) < 2)
+			break;
+	}
 	
-	for(int i = 0; i < 3; i++) {
+/*	for(int i = 0; i < 3; i++) {
 		log_event(num, "Entering critical section...");
 		enter_cs(num);
 		log_event(num, "Entered critical section.");
@@ -110,6 +114,7 @@ int main (int argc, char *argv[]) {
 		log_event(num, "Exiting critical section...");
 		shm->numbers[num] = 0;
 	}
+*/
 	
 	sleep(2);
 	shmdt(shm);
