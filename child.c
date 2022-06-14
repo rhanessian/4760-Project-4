@@ -88,9 +88,11 @@ int main (int argc, char *argv[]) {
     
    		usleep(2000000);
 		printf("%ld, %s\n", (long)getpid(), message.mesg_text);
+		long nanoseconds = strtol(message.mesg_text, NULL, 10);
 		struct mesg_buffer buf;
 		buf.mesg_type = 2;
-		strcpy(buf.mesg_text, argv[1]);
+		snprintf(buf.mesg_text, sizeof(buf.mesg_text), "%ld", nanoseconds);
+
 	
 		if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
 			perror("Child message didn't send");

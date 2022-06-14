@@ -1,0 +1,57 @@
+#ifndef LAYOUT_H
+#define LAYOUT_H
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <time.h>
+#include <sys/stat.h>
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include <signal.h>
+#include <sys/wait.h>
+#include <fcntl.h>
+#include <math.h>
+#include <semaphore.h>
+#include <sys/ipc.h> 
+#include <sys/msg.h>
+
+#define NUM_PCBS 18
+
+#define BASE_QUANTA 100000
+
+#define TERMINATE 20
+
+#define REALTIME 1
+#define USER 2
+
+struct message {
+    long type;
+    char text[16];
+};
+
+/*
+
+In the beginning, oss will allocate shared memory for system data structures, including a process table with a process control block for each user process. The process control block is a fixed size structure and contains information to manage the child process scheduling. Notice that since it is a simulator, you will not need to allocate space to save the context of child processes. But you must allocate space for scheduling-related items such as total CPU time used, total time in the system, time used during the last burst, your local simulated pid, and process priority, if any. The process control block resides in shared memory and is accessible to the children. Since we are limiting ourselves to 20 processes in this class, you should allocate space for up to 18 process control blocks. Also create a bit vector, local to oss, that will help you keep track of the process control blocks (or process IDs) that are already taken.
+*/
+
+struct pcb {
+    int total_cpu_time;
+    int total_sys_time;
+    int time_during_last;
+    int pid;
+    int priority;
+    int realpid;
+    int type;
+    int done;
+    int quantum;
+};
+
+struct shm_layout {
+    unsigned int seconds, nanoseconds;
+    struct pcb pcbs[NUM_PCBS];
+};
+
+#endif

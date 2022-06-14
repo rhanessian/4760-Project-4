@@ -1,0 +1,107 @@
+#include "layout.h"
+struct shm_layout *str;
+int msgid, msgid1;
+
+void handle_interrupt1 (int sig)
+{
+	shmdt(str);
+	str = NULL;
+}
+
+int main (int argc, const char **argv)
+{
+	int shm, i, nextid = -1, uet;
+	key_t key, key1, key2;
+	struct message message, reply;
+	
+	signal(SIGALRM, handle_interrupt1);
+	signal(SIGUSR1, handle_interrupt1);
+	signal(SIGCHLD, handle_interrupt1);
+
+	key = ftok("oss.c", 123);
+		
+	if ((shm = shmget(key, sizeof(struct shm_layout), 0666 | IPC_CREAT)) < 0) {
+		perror("shmget");
+		return -1;
+	}
+	
+	if ((str = (struct shm_layout *)shmat(shm, NULL, 0)) == NULL) {
+		perror("shmat");
+		return -1;
+	}
+		
+	key1 = ftok("child.c", 321);
+	key2 = ftok("child.c", 322);
+
+	if ((msgid = msgget(key1, 0666 | IPC_CREAT)) < 0) {
+		perror("msgget child");
+		shmdt(str);
+		return -1;
+	}
+	if ((msgid1 = msgget(key2, 0666 | IPC_CREAT)) < 0) {
+		perror("msgget child");
+		shmdt(str);
+		return -1;
+	}
+	
+	do {
+		for (i = 0; i < NUM_PCBS; i++) {
+			if (str->pcbs[i].realpid == getpid()) {
+				nextid = i;
+				break;
+			}
+		}
+	} while (nextid == -1);
+	
+	srand(time(NULL) * (1 + nextid));
+	
+	reply.type = nextid + 1;
+	
+	while (1) {
+		if (msgrcv(msgid, &message, sizeof(message), 1 + nextid, 0) < 0) {
+			perror("msgrcv");
+			return -1;
+		}
+		int term = 0;
+		if ((rand() % 100) < TERMINATE) {
+			term = 1;
+			uet = 0;
+		} else {
+			uet = rand() & 1;
+		}
+		unsigned int lim = atoi(message.text);
+		unsigned int olim = lim;
+		int r = rand() % 4;
+		int s = rand() % 1001;
+		if (!uet && (r != 3) && !term) { // blocked queue		
+			snprintf(reply.text, 16, "0 %d %d", r, s);
+	
+			msgsnd(msgid1, &reply, sizeof(message), 0);
+		} else {
+			if (!uet && (r == 3)) { // preempt
+				int p = 1 + (rand() % 99);
+				float f = (float)p / 100.f;
+				lim = (int)((float)lim * f);
+			}
+			unsigned int nlim = lim + str->nanoseconds;
+			unsigned int sec = str->seconds;
+
+			while (str->nanoseconds < nlim && str->seconds <= sec)
+				;
+		
+			snprintf(reply.text, 16, "%d %d 0", (term ? -lim : lim), olim);
+	
+			msgsnd(msgid1, &reply, sizeof(message), 0);
+		}
+		
+		if (term)
+			break;
+	}
+	
+	str->pcbs[nextid].done = 1;
+
+	shmdt(str);
+	str = NULL;
+			
+	return 0;
+}

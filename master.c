@@ -20,6 +20,49 @@ pid_t pids[MAXPIDS];
 int shmid, msgid;
 struct shrd_mem *shm;
 
+struct queue_item {
+	unsigned long seconds;
+	unsigned long nanoseconds;
+	int process_id;
+};
+
+struct queue_node {
+	struct queue_item process;
+	struct queue_node *next;
+};
+
+struct queue {
+	struct queue_node *first;
+	struct queue_node *last;
+};
+
+int queue_pop (struct queue *q, struct queue_item *process) {
+	struct queue_node *current;
+	if(!q->first)
+		return -1;
+	memcpy(process, &(q->first->process), sizeof(struct queue_item));
+	current = q->first;
+	if (q->first == q->last)
+		q->first = q->last = NULL;
+	else
+		q->first = q->first->next;
+	free(current);
+	return 0;
+}
+
+void queue_push (struct queue *q, struct queue_item process) {
+	struct queue_node *new_node;
+	new_node = (struct queue_node *)calloc(sizeof(struct queue_node), 1);
+	memcpy(&(new_node->process), &(process), sizeof(struct queue_item));
+	if (!q->first && !q->last){
+		q->first = q->last = new_node;
+		return;
+	}
+	q->last->next = new_node;
+	q->last = new_node;
+}
+
+// Catches signal
 void sighandler(int signum) {
 	printf("\nCaught signal %d, coming out...\n", signum);
 	for (int i = 0; i < MAXPIDS; i++)
@@ -145,10 +188,10 @@ int main (int argc, char *argv[]) {
 
 			if(msgsnd(msgid, &buf, sizeof(buf.mesg_text), 0) < 0)
 				perror("Message didn't send");
-			else
+			else {
 				printf("Sent message\n");
 				fprintf(f, "Dispatching process with PID %d from queue %d at time %u:%u", pid, 0, shm->sec, shm->nanosec);
-	
+			}
 			struct mesg_buffer message;
 		
 			do {
